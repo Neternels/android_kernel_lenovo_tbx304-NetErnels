@@ -1257,5 +1257,6 @@ config CONFIG_TOUCHSCREEN_HIMAX_DEBUG
 	  module will be called ad7879.
 source "drivers/input/touchscreen/hx852xf/Kconfig"
 source "drivers/input/touchscreen/gt910P/Kconfig"
+source "drivers/input/touchscreen/focaltech_touch_tb8504/Kconfig"
 
 endif
