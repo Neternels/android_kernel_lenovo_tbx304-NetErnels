@@ -7,3 +7,4 @@
 #include "tbx304-msm8917-audio.dtsi"
 #include "tbx304-msm-pmi8937.dtsi"
 #include "tbx304-msm8917-regulator.dtsi"
+#include "tbx304-msm-pm8937.dtsi"
