@@ -1,7 +1,16 @@
 / {
 
 qcom,msm-id = <303 0x0>, <308 0x0>, <309 0x0>,<307 0x0>;
+
+	reserved-memory {
+		ramoops_mem: ramoops_region@0 {
+			compatible = "removed-dma-pool";
+			no-map;
+			reg = <0 0x8ee00000 0x0 0x80000>;
+		};
+	};
 };
+
 
 &firmware {
 	android {
@@ -289,5 +298,20 @@ qcom,msm-id = <303 0x0>, <308 0x0>, <309 0x0>,<307 0x0>;
 		reg = <0xA4128 0x4>,
 					<0xA6034 0x4>;
 		reg-names =  "sn-base", "fuse-state";
+	};
+
+	ramoops {
+		compatible = "ramoops";
+		status = "ok";
+
+		/* This is tacked at the end of wcnss_fw_region@0 */
+		android,ramoops-buffer-start = <0x8ee00000>;
+		android,ramoops-buffer-size = <0x80000>;
+		android,ramoops-console-size = <0x40000>;
+		android,ramoops-pmsg-size = <0x20000>;
+		android,ramoops-record-size = <0x5000>;
+		android,ramoops-ftrace-size = <0x15000>;
+		android,ramoops-dump-oops = <0x1>;
+		linux,contiguous-region = <&ramoops_mem>;
 	};
 };
