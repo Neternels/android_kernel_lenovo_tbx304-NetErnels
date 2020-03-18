@@ -75,12 +75,20 @@
 			ti,vconn-en-gpio = <&tlmm 0x2 0x0>;
 			ti,usb-comm-capable;
 			ti,no-usb-suspend;
-			ti,src-settling-time-ms = [00 32];
+			ti,src-settling-time-ms = <0x32>;
 			ti,fast-role-swap-support = <0x0>;
 			ti,pdo-priority = <0x0>;
 			ti,role = <0x2>;
 			ti,rp-val = <0x2>;
 			ti,flags = <0x0>;
+			ti,auto-accept-swap-to-dfp;
+			ti,auto-accept-swap-to-sink;
+			ti,auto-accept-swap-to-source;
+			ti,auto-accept-swap-to-ufp;
+			ti,auto-accept-vconn-swap;
+			ti,dual-role-data;
+			ti,externally-powered;
+			ti,usb-suspend-supported;
 			source@0 {
 				ti,current-flow = <0x0>;
 				ti,supply-type = <0x0>;
