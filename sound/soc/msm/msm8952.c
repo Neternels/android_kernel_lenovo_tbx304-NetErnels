@@ -4082,7 +4082,7 @@ err:
 		gpio_free(pdata->spk_hs_switch_gpio);
 #endif
 #if defined(CONFIG_RECEIVER_EXT_PA)
-#if !(defined(CONFIG_MACH_LENOVO_TB8504) || defined(CONFIG_MACH_LENOVO_TB8704) || defined(CONFIG_MACH_LENOVO_TB8504))
+#if !(defined(CONFIG_MACH_LENOVO_TB8804) || defined(CONFIG_MACH_LENOVO_TB8704) || defined(CONFIG_MACH_LENOVO_TB8504))
 	if (gpio_is_valid(pdata->spk_rec_switch_gpio_lc))
 		gpio_free(pdata->spk_rec_switch_gpio_lc);
 #endif
@@ -4099,7 +4099,7 @@ err:
 		gpio_free(pdata->spk_hs_switch_gpio);
 #endif
 #if defined(CONFIG_RECEIVER_EXT_PA)
-#if !(defined(CONFIG_MACH_LENOVO_TB8504) || defined(CONFIG_MACH_LENOVO_TB8704) || defined(CONFIG_MACH_LENOVO_TB8504))
+#if !(defined(CONFIG_MACH_LENOVO_TB8804) || defined(CONFIG_MACH_LENOVO_TB8704) || defined(CONFIG_MACH_LENOVO_TB8504))
 	if (gpio_is_valid(pdata->spk_rec_switch_gpio_lc))
 		gpio_free(pdata->spk_rec_switch_gpio_lc);
 #endif
