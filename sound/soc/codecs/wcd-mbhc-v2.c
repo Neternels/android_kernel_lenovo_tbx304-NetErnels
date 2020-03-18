@@ -36,9 +36,6 @@
 #include "wcdcal-hwdep.h"
 #ifdef CONFIG_HEADSET_EUO_US_SWITCH_P3592
 #include "ts3a225e.h"
-
-/* LCSH ADD headset detection test point(/sys/android_mic/us_eu) @duanlongfei 20170223 */
-extern void lct_mic_set(int val);
 #endif
 
 #define WCD_MBHC_JACK_MASK (SND_JACK_HEADSET | SND_JACK_OC_HPHL | \
@@ -782,8 +779,8 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 		wcd_mbhc_jack_report(mbhc, &mbhc->headset_jack,
 				    (mbhc->hph_status | SND_JACK_MECHANICAL),
 				    WCD_MBHC_JACK_MASK);
-	pr_debug("%s: leave hph_status %x,pa_on_flag=%d\n", __func__, mbhc->hph_status,pa_on_flag);
 #if  defined(CONFIG_MACH_LENOVO_TB8504) || defined(CONFIG_MACH_LENOVO_TB8704)
+		pr_debug("%s: leave hph_status %x,pa_on_flag=%d\n", __func__, mbhc->hph_status,pa_on_flag);
 		if (!pa_on_flag)
 #endif
 		wcd_mbhc_clr_and_turnon_hph_padac(mbhc);
@@ -1858,22 +1855,6 @@ static void wcd_mbhc_detect_plug_type(struct wcd_mbhc *mbhc)
        } else if (ts3a225e_reg[5] == 0x02) {
             pr_info("%s: HEADSET 4-pole \n",__func__);
             plug_type = MBHC_PLUG_TYPE_HEADSET;
-            if (((ts3a225e_reg[4] & 0x40)  == 0) && (((ts3a225e_reg[4] & 0x38)&&(ts3a225e_reg[4]&0x7)) != 1)) {
-                pr_info("%s: CITA \n",__func__);
-                /* LCSH ADD for CITA plug-in detection test point /sys/android_mic/ue_eu @duanlongfei 20170223 */
-                lct_mic_set(0);
-            }
-            else {
-                pr_info("%s: OMTP \n",__func__);
-                /* LCSH ADD for OMTP plug-in detection test point @duanlongfei 20170223 */
-                lct_mic_set(1);
-            }
-            /*
-            if ((ts3a225e_reg[4]&0x07) == 0x07 || (ts3a225e_reg[4]&0x38) == 0x38) {
-                wcd_is_special_headset(mbhc);
-                pr_info("%s: ts3a225e is special headset, OMTP", __func__);
-            }*/
-            //goto exit;
        } else {
             pr_info("%s: ts3a225e detect fail\n", __func__);
        }
