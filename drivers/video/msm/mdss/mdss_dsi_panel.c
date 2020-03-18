@@ -326,7 +326,8 @@ static struct dsi_cmd_desc backlight_cmd8 = {
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm8)},
 	led_pwm8
 };
-#else
+
+#elif defined(CONFIG_MACH_LENOVO_TB8504)
 static char led_pwm1[2] = {0x51, 0x0};	/* DTYPE_DCS_WRITE1 */
 
 //boe start
@@ -347,6 +348,8 @@ static struct dsi_cmd_desc backlight_cmd3 = {
 };
 */
 //boe end
+#else
+static char led_pwm1[2] = {0x51, 0x0};	/* DTYPE_DCS_WRITE1 */
 #endif
 static struct dsi_cmd_desc backlight_cmd = {
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 0, sizeof(led_pwm1)},
@@ -3418,8 +3421,9 @@ int mdss_dsi_panel_init(struct device_node *node,
 		pr_err("%s:%d panel dt parse failed\n", __func__, __LINE__);
 		return rc;
 	}
-
+#if defined(CONFIG_MACH_LENOVO_TB8504)
 	esd_ctrl = ctrl_pdata;
+#endif
 	pinfo->dynamic_switch_pending = false;
 	pinfo->is_lpm_mode = false;
 	pinfo->esd_rdy = false;
