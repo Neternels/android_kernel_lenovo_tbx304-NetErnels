@@ -85,5 +85,9 @@ obj-$(CONFIG_MSM_BCL_CTL)	+= msm_bcl.o
 obj-$(CONFIG_MSM_BCL_PERIPHERAL_CTL) += bcl_peripheral.o
 obj-$(CONFIG_POWER_RESET)	+= reset/
 obj-$(CONFIG_ARCH_MSM)		+= qcom/
+ifeq ($(CONFIG_MACH_LENOVO_TBX704),y)
 obj-$(CONFIG_USB_FUSB302)	+= onsemi/
+else
+obj-$(CONFIG_USB_FUSB302)	+= fusb302/
+endif
 obj-$(CONFIG_TUSB422)	+= tusb422/

@@ -53,7 +53,7 @@
 ///* stone add for debug end *///
 #endif
 
-#ifdef CONFIG_USB_FUSB302
+#ifdef CONFIG_MACH_LENOVO_TBX704
 extern bool have_fusb302;
 #endif
 /* Mask/Bit helpers */
@@ -8308,13 +8308,13 @@ static int smbchg_hw_init(struct smbchg_chip *chip)
 		if (rc < 0)
 			dev_err(chip->dev, "Couldn't set OTG OC config rc = %d\n",
 				rc);
-		#ifdef CONFIG_USB_FUSB302
+#ifdef CONFIG_MACH_LENOVO_TBX704
 		if(have_fusb302)
 		{
 		 	rc = smbchg_sec_masked_write(chip, chip->otg_base + OTG_CFG,
             			OTG_EN_CTRL_MASK, OTG_CMD_CTRL_RID_EN);
 		}
-		#endif
+#endif
 	}
 
 	if (chip->otg_pinctrl) {
