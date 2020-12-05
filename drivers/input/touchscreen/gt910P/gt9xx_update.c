@@ -24,7 +24,11 @@
 #include <linux/namei.h>
 #include <linux/mount.h>
 #if ((GTP_AUTO_UPDATE && GTP_HEADER_FW_UPDATE) || GTP_COMPATIBLE_MODE)
+#ifdef CONFIG_MACH_LENOVO_TBX304
+    #include "gt9xx_x304_firmware.h"
+#else
     #include "gt9xx_firmware.h"
+#endif
 #endif
 
 #define GUP_REG_HW_INFO             0x4220
