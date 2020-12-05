@@ -197,6 +197,8 @@ dtb-$(CONFIG_ARCH_MSM8937) += msm8937-rumi.dtb \
 ifeq ($(CONFIG_MACH_LENOVO_MSM8917),y)
 dtb-$(CONFIG_MACH_LENOVO_TB8504) += \
         tb8504-msm8917-pmi8937-qrd-sku5.dtb
+dtb-$(CONFIG_MACH_LENOVO_TBX304) += \
+        tbx304-msm8917-pmi8937-qrd-sku5.dtb
 else
 dtb-$(CONFIG_ARCH_MSM8917) += msm8917-rumi.dtb \
 	apq8017-pmi8937-cdp.dtb \
