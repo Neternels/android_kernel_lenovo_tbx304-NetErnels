@@ -34,6 +34,12 @@ config MACH_LENOVO_TB8504
 	help
 	  Support for Lenovo Tab4 8 (TB8504, P3588)
 
+config MACH_LENOVO_TBX304
+	bool "TBX304 board"
+	select MACH_LENOVO_MSM8917
+	help
+	  Support for Lenovo Tab4 10 (TBX304)
+
 config MACH_LENOVO_TB8703
 	bool "TB8703 board"
 	select MACH_LENOVO_MSM8953
