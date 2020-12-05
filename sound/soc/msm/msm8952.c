@@ -60,7 +60,7 @@ enum btsco_rates {
 	RATE_16KHZ_ID,
 };
 
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 int us_eu_pull_gpio = 0xFF;   //lsn_add
 #endif
 static int msm8952_auxpcm_rate = 8000;
@@ -122,7 +122,7 @@ static struct wcd_mbhc_config mbhc_cfg = {
 	.key_code[1] = KEY_VOLUMEUP,
 	.key_code[2] = KEY_VOLUMEDOWN,
 	.key_code[3] = KEY_VOICECOMMAND,
-#elif defined(CONFIG_MACH_LENOVO_TB8703) || defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TB8504) || defined(CONFIG_MACH_LENOVO_TB8704) || defined(CONFIG_MACH_LENOVO_TB8804)
+#elif defined(CONFIG_MACH_LENOVO_TB8703) || defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TB8504) || defined(CONFIG_MACH_LENOVO_TB8704) || defined(CONFIG_MACH_LENOVO_TB8804) ||  defined (CONFIG_MACH_LENOVO_TBX304)
 	.key_code[1] = KEY_VOLUMEUP,
         .key_code[2] = KEY_VOLUMEDOWN,
         .key_code[3] = 0,
@@ -280,7 +280,7 @@ int is_ext_spk_gpio_support(struct platform_device *pdev,
 			struct msm8916_asoc_mach_data *pdata)
 {
 	const char *spk_ext_pa = "qcom,msm-spk-ext-pa";
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 	const char *spk_ext_pa1 = "qcom,msm-spk-ext-pa1";
 #endif
 
@@ -298,7 +298,7 @@ int is_ext_spk_gpio_support(struct platform_device *pdev,
 				__func__, pdata->spk_ext_pa_gpio);
 			return -EINVAL;
 		}
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 		else
 		{
 			pr_err("%s: enable speaker gpio: %d",
@@ -307,7 +307,7 @@ int is_ext_spk_gpio_support(struct platform_device *pdev,
 		}
 #endif
 	}
-	#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 	pdata->spk_ext_pa1_gpio = of_get_named_gpio(pdev->dev.of_node,
 				spk_ext_pa1, 0);
 
@@ -331,7 +331,7 @@ pr_err("%s:exit\n", __func__);
 #endif
 	return 0;
 }
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 //setting APM power
 //mode  1:1.2W   2:1.0W    3:0.8W   4:0.6W
 void spk_ext_pa_set_mode(struct msm8916_asoc_mach_data *pdata,int mode)
@@ -503,7 +503,7 @@ static int enable_spk_ext_pa(struct snd_soc_codec *codec, int enable)
 			pdata->spk_ext_pa_gpio);
 		return false;
 	}
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 	if (!gpio_is_valid(pdata->spk_ext_pa1_gpio)) {
 		pr_err("%s: Invalid ext_pa1 gpio: %d\n", __func__,
 			pdata->spk_ext_pa1_gpio);
@@ -513,12 +513,12 @@ static int enable_spk_ext_pa(struct snd_soc_codec *codec, int enable)
 
 	pr_debug("%s: %s external speaker PA\n", __func__,
 		enable ? "Enable" : "Disable");
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 	gpio_direction_output(pdata->spk_ext_pa_gpio, 0);
 	gpio_direction_output(pdata->spk_ext_pa1_gpio, 0);
 #endif
 	if (enable) {
-#ifndef CONFIG_MACH_LENOVO_TBX704
+#if !defined(CONFIG_MACH_LENOVO_TBX704) && !defined (CONFIG_MACH_LENOVO_TBX304)
 		ret = msm_gpioset_activate(CLIENT_WCD_INT, "ext_spk_gpio");
 #endif
 		if (ret) {
@@ -526,14 +526,14 @@ static int enable_spk_ext_pa(struct snd_soc_codec *codec, int enable)
 					__func__, "ext_spk_gpio");
 			return ret;
 		}
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 		spk_ext_pa_set_mode(pdata,5);	// power setting 5
 #else
 		gpio_set_value_cansleep(pdata->spk_ext_pa_gpio, enable);
 #endif
 
 	} else {
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 		gpio_direction_output(pdata->spk_ext_pa_gpio, 0);
 		gpio_direction_output(pdata->spk_ext_pa1_gpio, 0);
 #else
@@ -579,7 +579,7 @@ int is_us_eu_switch_gpio_support(struct platform_device *pdev,
 						__func__, "us_eu_gpio");
 			return ret;
 		}
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 		us_eu_pull_gpio = pdata->us_euro_gpio;  //lsn_add
 		gpio_direction_output(us_eu_pull_gpio, 0);
 #endif
@@ -1738,7 +1738,7 @@ static int msm_quat_mi2s_snd_startup(struct snd_pcm_substream *substream)
 	pr_debug("%s(): substream = %s  stream = %d\n", __func__,
 				substream->name, substream->stream);
 
-#ifndef CONFIG_MACH_LENOVO_TBX704
+#if !defined (CONFIG_MACH_LENOVO_TBX704) && !defined (CONFIG_MACH_LENOVO_TBX304)
 	if (!q6core_is_adsp_ready()) {
 		pr_err("%s(): adsp not ready\n", __func__);
 		return -EINVAL;
@@ -1762,7 +1762,7 @@ static int msm_quat_mi2s_snd_startup(struct snd_pcm_substream *substream)
 			pr_err("failed to enable codec gpios\n");
 			goto err;
 		}
-#ifndef CONFIG_MACH_LENOVO_TBX704
+#if !defined(CONFIG_MACH_LENOVO_TBX704) && !defined (CONFIG_MACH_LENOVO_TBX304)
 	} else {
 			pr_err("%s: error codec type\n", __func__);
 	}
@@ -1783,14 +1783,14 @@ err:
 static void msm_quat_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
 {
 	int ret;
-#ifndef CONFIG_MACH_LENOVO_TBX704
+#if !defined(CONFIG_MACH_LENOVO_TBX704) && !defined (CONFIG_MACH_LENOVO_TBX304)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_card *card = rtd->card;
 	struct msm8916_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
 #endif
 	pr_debug("%s(): substream = %s  stream = %d\n", __func__,
 				substream->name, substream->stream);
-#ifndef CONFIG_MACH_LENOVO_TBX704
+#if !defined(CONFIG_MACH_LENOVO_TBX704) && !defined (CONFIG_MACH_LENOVO_TBX304)
 	if ((pdata->ext_pa & QUAT_MI2S_ID) == QUAT_MI2S_ID)
 #endif
 	{
@@ -1966,7 +1966,7 @@ static void *def_msm8952_wcd_mbhc_cal(void)
 #define S(X, Y) ((WCD_MBHC_CAL_PLUG_TYPE_PTR(msm8952_wcd_cal)->X) = (Y))
 #ifdef CONFIG_MACH_LENOVO_KUNTAO
 	S(v_hs_max, 1700);
-#elif defined(CONFIG_MACH_LENOVO_TB8703) || defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TB8504) || defined(CONFIG_MACH_LENOVO_TB8704) || defined(CONFIG_MACH_LENOVO_TB8804)
+#elif defined(CONFIG_MACH_LENOVO_TB8703) || defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TB8504) || defined(CONFIG_MACH_LENOVO_TB8704) || defined(CONFIG_MACH_LENOVO_TB8804) || defined (CONFIG_MACH_LENOVO_TBX304)
 	S(v_hs_max, 1600);
 #else
 	S(v_hs_max, 1500);
@@ -2015,7 +2015,7 @@ static void *def_msm8952_wcd_mbhc_cal(void)
 	btn_high[3] = 500;
 	btn_low[4] = 500;
 	btn_high[4] = 500;
-#elif defined CONFIG_MACH_LENOVO_TBX704
+#elif defined CONFIG_MACH_LENOVO_TBX704 || defined (CONFIG_MACH_LENOVO_TBX304)
 	btn_low[0] = 100;
 	btn_high[0] = 100;
 	btn_low[1] = 275;
@@ -3237,7 +3237,7 @@ void msm8952_disable_mclk(struct work_struct *work)
 	mutex_unlock(&pdata->cdc_mclk_mutex);
 }
 
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 extern  int us_en_save_flag;
 #endif
 #if defined(CONFIG_SPEAKER_HEADPHONE_SWITCH)
@@ -3323,7 +3323,7 @@ static bool msm8952_swap_gnd_mic(struct snd_soc_codec *codec)
 	}
 	gpio_set_value_cansleep(pdata->us_euro_gpio, !value);
 
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 	us_en_save_flag=!value;
 #endif
 	pr_debug("%s: swap select switch %d to %d\n", __func__, value, !value);
