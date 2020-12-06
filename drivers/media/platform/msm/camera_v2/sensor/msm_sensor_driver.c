@@ -692,7 +692,7 @@ static void msm_sensor_fill_sensor_info(struct msm_sensor_ctrl_t *s_ctrl,
 	strlcpy(entity_name, s_ctrl->msm_sd.sd.entity.name, MAX_SENSOR_NAME);
 }
 
-#if defined(CONFIG_MACH_LENOVO_TB8703) || defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TB8704) || defined(CONFIG_MACH_LENOVO_TB8804) || defined(CONFIG_MACH_LENOVO_TB8504)
+#if defined(CONFIG_MACH_LENOVO_TB8703) || defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TB8704) || defined(CONFIG_MACH_LENOVO_TB8804) || defined(CONFIG_MACH_LENOVO_TB8504) || defined(CONFIG_MACH_LENOVO_TBX304)
 /* add sensor info for factory mode
    begin
 */
