@@ -68,6 +68,18 @@
         };
     };
 
+    hall2_ic {
+	compatible = "hall-switch";
+	interrupt-parent = <&tlmm>;
+	interrupts = <61 3>;
+	interrupt-names = "hall-int";
+	vddio-supply = <&pm8917_l10>;
+	linux,gpio-int = <&tlmm 61 3>;
+	linux,wakeup;
+	linux,min-uv = <2800000>;
+	linux,max-uv = <2850000>;
+    };
+
 };
 
 
