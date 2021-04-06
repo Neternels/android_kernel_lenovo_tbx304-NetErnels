@@ -39,7 +39,7 @@
 #include <linux/msm_bcl.h>
 #include <linux/ktime.h>
 #include <linux/pmic-voter.h>
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined( CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TBX304)
 #include "couloMeter.h"  //stone add
 
 ///* stone add for debug start *///
@@ -174,6 +174,9 @@ struct smbchg_chip {
 	bool				cfg_chg_led_sw_ctrl;
 	bool				vbat_above_headroom;
 	bool				force_aicl_rerun;
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	bool				use_fg_usbid;
+#endif
 	bool				hvdcp3_supported;
 	bool				allow_hvdcp3_detection;
 	bool				restricted_charging;
@@ -186,6 +189,10 @@ struct smbchg_chip {
 	struct delayed_work		parallel_en_work;
 	struct dentry			*debug_root;
 	struct smbchg_version_tables	tables;
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	int				custom_cable_max_ma;
+	struct delayed_work		otg_detect_work;
+#endif
 
 	/* wipower params */
 	struct ilim_map			wipower_default;
@@ -211,10 +218,10 @@ struct smbchg_chip {
 	int				max_pulse_allowed;
 	int				wake_reasons;
 	int				previous_soc;
-	#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TBX304)
 	int                           last_soc;
 	ktime_t                  last_time;
-	#endif
+#endif
 	int				usb_online;
 	bool				dc_present;
 	bool				usb_present;
@@ -239,6 +246,9 @@ struct smbchg_chip {
 	bool				typec_dfp;
 #if defined(CONFIG_TUSB422) || defined(CONFIG_USB_FUSB302)
 	bool                             usb_pd_flag;
+#endif
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	bool				custom_cable_detected;
 #endif
 
 	/* jeita and temperature */
@@ -274,6 +284,9 @@ struct smbchg_chip {
 	int				otg_oc_irq;
 	int				aicl_done_irq;
 	int				usbid_change_irq;
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	u32				usbid_res_kohm;
+#endif
 	int				chg_error_irq;
 	bool				enable_aicl_wake;
 
@@ -305,6 +318,10 @@ struct smbchg_chip {
 	struct mutex			therm_lvl_lock;
 	struct mutex			usb_set_online_lock;
 	struct mutex			pm_lock;
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	struct mutex			otg_en_lock;
+	struct mutex			fg_usbid_lock;
+#endif
 	/* aicl deglitch workaround */
 	unsigned long			first_aicl_seconds;
 	int				aicl_irq_count;
@@ -498,6 +515,8 @@ module_param_named(
 );
 #ifdef CONFIG_MACH_LENOVO_TBX704
 static int smbchg_default_hvdcp_icl_ma = 2500;
+#elseif defined(CONFIG_MACH_LENOVO_TBX304)
+static int smbchg_default_hvdcp_icl_ma = 1950;
 #else
 static int smbchg_default_hvdcp_icl_ma = 1800;
 #endif
@@ -507,6 +526,8 @@ module_param_named(
 );
 #ifdef CONFIG_MACH_LENOVO_TBX704
 static int smbchg_default_hvdcp3_icl_ma = 2500;
+#elseif defined(CONFIG_MACH_LENOVO_TBX304)
+static int smbchg_default_hvdcp3_icl_ma = 1800;
 #else
 static int smbchg_default_hvdcp3_icl_ma = 3000;
 #endif
@@ -517,6 +538,8 @@ module_param_named(
 
 #if defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TB8704)  || defined(CONFIG_MACH_LENOVO_TB8804) || defined(CONFIG_MACH_LENOVO_TB8504)
 static int smbchg_default_dcp_icl_ma = 2000;
+#elseif defined(CONFIG_MACH_LENOVO_TBX304)
+static int smbchg_default_dcp_icl_ma = 1950;
 #else
 static int smbchg_default_dcp_icl_ma = 1800;
 #endif
@@ -543,6 +566,10 @@ module_param_named(
 	wipower_dcin_hyst_uv, wipower_dcin_hyst_uv,
 	int, S_IRUSR | S_IWUSR
 );
+#ifdef CONFIG_MACH_LENOVO_TBX304
+static int smbchg_change_usb_supply_type(struct smbchg_chip *chip,
+					enum power_supply_type type);
+#endif
 
 #define pr_smb(reason, fmt, ...)				\
 	do {							\
@@ -559,6 +586,10 @@ module_param_named(
 		else							\
 			pr_debug_ratelimited(fmt, ##__VA_ARGS__);	\
 	} while (0)
+
+#ifdef CONFIG_MACH_LENOVO_TBX304
+static void dump_regs(struct smbchg_chip *chip);
+#endif
 
 static int smbchg_read(struct smbchg_chip *chip, u8 *val,
 			u16 addr, int count)
@@ -980,9 +1011,22 @@ static void read_usb_type(struct smbchg_chip *chip, char **usb_type_name,
 	}else
 #endif
 	{
+#ifdef CONFIG_MACH_LENOVO_TBX304
+		mutex_lock(&chip->fg_usbid_lock);
+		if (chip->custom_cable_detected) {
+			*usb_type_name = "DCP";
+			*usb_supply_type = POWER_SUPPLY_TYPE_USB_DCP;
+		} else {
+			type = get_type(reg);
+			*usb_type_name = get_usb_type_name(type);
+			*usb_supply_type = get_usb_supply_type(type);
+		}
+		mutex_unlock(&chip->fg_usbid_lock);
+#else
 		type = get_type(reg);
 		*usb_type_name = get_usb_type_name(type);
 		*usb_supply_type = get_usb_supply_type(type);
+#endif
 	}
 }
 
@@ -1147,7 +1191,7 @@ static int get_prop_batt_current_now(struct smbchg_chip *chip);
 #define DEFAULT_BATT_CAPACITY	50
 static int get_prop_batt_capacity(struct smbchg_chip *chip)
 {
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704)
     int capacity;
     int capacity_int;
     int rc;  //s64 elapsed_us ;
@@ -1274,6 +1318,77 @@ static bool get_prop_batt_fg_soc_changed(struct smbchg_chip *chip )
 static int get_prop_batt_capacity_ori(struct smbchg_chip *chip)
 {
 #endif
+#if defined (CONFIG_MACH_LENOVO_TBX304)
+        int capacity; int capacity_int; int rc;  //s64 elapsed_us ;
+        ktime_t now;
+
+        now = ktime_get_boottime();
+
+          if(g_power_is_couloMeter == 0)
+         goto  internal_soc;
+
+           capacity = cm_get_StateOfCharge();
+
+         if((capacity == 50) && (g_power_is_couloMeter==0 ))
+            goto        internal_soc;
+
+         pr_smb(PR_STATUS,"  csz external capcity is %d ",capacity );
+         capacity_int= capacity;
+           goto return_soc;
+
+internal_soc:
+
+        if (chip->fake_battery_soc >= 0)
+                return chip->fake_battery_soc;
+
+        rc = get_property_from_fg(chip, POWER_SUPPLY_PROP_CAPACITY, &capacity_int);
+        if (rc) {
+                pr_smb(PR_STATUS, "Couldn't get capacity rc = %d\n", rc);
+                capacity_int = DEFAULT_BATT_CAPACITY;
+        }
+        pr_smb(PR_STATUS,"  csz internal capcity is %d ",capacity_int );
+
+        if( ( chip->last_soc == 50 ) &&( abs( capacity_int - chip->last_soc ) >1) )
+        {
+                  chip->last_soc = capacity_int;
+        }
+
+return_soc:
+        if(chip->last_soc < 0)
+        {
+                if(capacity_int > 100 || capacity_int < 0)
+                        return 50;
+                pr_smb(PR_STATUS,"  csz chip->last_soc < 0 " );
+                chip->last_soc =capacity_int;
+                chip->last_time.tv64 = 0;
+        }
+
+        if(  ktime_to_ms(ktime_sub( now, chip->last_time)) < 2000 )
+        {
+               pr_smb(PR_STATUS,"csz return %d,, time less than 2s",chip->last_soc );
+                return chip->last_soc;
+         }
+
+         if(  abs( capacity_int - chip->last_soc ) >1    )
+         {
+                if((capacity_int - chip->last_soc  >1) &&
+                        (get_prop_batt_status(chip) != POWER_SUPPLY_STATUS_CHARGING))
+                {
+                                return chip->last_soc;
+                }else if((chip->last_soc - capacity_int >1) &&
+                        (get_prop_batt_status(chip) == POWER_SUPPLY_STATUS_CHARGING))
+                {
+                                return chip->last_soc;
+                }else{
+                          capacity_int= capacity_int> chip->last_soc ? chip->last_soc+1 : chip->last_soc-1 ;
+                          chip->last_time.tv64= now.tv64 ;
+                          pr_smb(PR_STATUS,"csz remedy" );
+                }
+         }
+           chip->last_soc = capacity_int;
+           pr_smb(PR_STATUS,"  csz  return %d",capacity_int );
+         return capacity_int;
+#else
 	int capacity, rc;
 
 	if (chip->fake_battery_soc >= 0) {
@@ -1293,6 +1408,7 @@ static int get_prop_batt_capacity_ori(struct smbchg_chip *chip)
 	pr_err("lvchen get_prop_batt_capacity_ori return %d\n",capacity);
 #endif
 	return capacity;
+#endif
 }
 
 #define DEFAULT_BATT_TEMP		200
@@ -1700,7 +1816,13 @@ static int smbchg_charging_en(struct smbchg_chip *chip, bool en)
 }
 
 #define CMD_IL			0x40
+#ifdef CONFIG_MACH_LENOVO_TBX304
+#define TR_RID_REG		0xFA
+#endif
 #define USBIN_SUSPEND_BIT	BIT(4)
+#ifdef CONFIG_MACH_LENOVO_TBX304
+#define RID_ALG_BIT		BIT(4)
+#endif
 #define CURRENT_100_MA		100
 #define CURRENT_150_MA		150
 #define CURRENT_500_MA		500
@@ -4239,12 +4361,248 @@ void update_usb_status(struct smbchg_chip *chip, bool usb_present, bool force);
 #define HVDCP_NOTIFY_MS		2500
 #endif
 
+#ifdef CONFIG_MACH_LENOVO_TBX304
+#define OTG_RESISTANCE_OFFSET           0
+#define CUSTOM_CABLE_RESISTANCE_KOHM    20
+#define CUSTOM_CABLE_RESISTANCE_KOHM_50    50
+#define PERCENT_INCR(x, y)              ((x) + (((x) * (y)) / 100))
+#define PERCENT_DECR(x, y)              ((x) - (((x) * (y)) / 100))
+#define PERCENT_BOUND(x, y, z)          (((x) >= PERCENT_DECR(y, z)) && \
+                                        ((x) <= PERCENT_INCR(y, z)))
+static int otg_enable(struct smbchg_chip *chip, bool enable)
+{
+        int rc = 0;
+
+        mutex_lock(&chip->otg_en_lock);
+
+        if (enable == chip->chg_otg_enabled)
+                goto unlock;
+
+        if (enable) {
+                chip->otg_retries = 0;
+                rc = configure_icl_control(chip, ICL_BUF_SS_DONE_VAL);
+                if (rc) {
+                        dev_err(chip->dev, "Couldn't switch to soft start completion, rc=%d\n",
+                                rc);
+                        goto unlock;
+                }
+
+                smbchg_icl_loop_disable_check(chip);
+                smbchg_otg_pulse_skip_disable(chip, REASON_OTG_ENABLED, true);
+
+                /* If pin control mode then return from here */
+                if (chip->otg_pinctrl)
+                        goto unlock;
+
+                /* sleep to make sure the pulse skip is actually disabled */
+                msleep(20);
+                rc = smbchg_masked_write(chip, chip->bat_if_base + CMD_CHG_REG,
+                                OTG_EN_BIT, OTG_EN_BIT);
+                if (rc < 0)
+                        dev_err(chip->dev, "Couldn't enable OTG mode rc=%d\n", rc);
+                else
+                        chip->otg_enable_time = ktime_get();
+                pr_smb(PR_STATUS, "Enabling OTG Boost\n");
+        } else {
+                if (!chip->otg_pinctrl) {
+                        rc = smbchg_masked_write(chip, chip->bat_if_base + CMD_CHG_REG,
+                                        OTG_EN_BIT, 0);
+                        if (rc < 0)
+                                dev_err(chip->dev, "Couldn't disable OTG mode rc=%d\n",
+                                                rc);
+                }
+                smbchg_otg_pulse_skip_disable(chip, REASON_OTG_ENABLED, false);
+                smbchg_icl_loop_disable_check(chip);
+
+                rc = configure_icl_control(chip, ICL_BUF_SYSON_LDO_VAL);
+                if (rc) {
+                        dev_err(chip->dev, "Couldn't switch to Syson LDO, rc=%d\n",
+                                rc);
+                        rc = 0;
+                }
+                pr_smb(PR_STATUS, "Disabling OTG Boost\n");
+        }
+
+
+        chip->chg_otg_enabled = enable;
+unlock:
+        mutex_unlock(&chip->otg_en_lock);
+
+        return rc;
+}
+
+/**
+ * fg_usbid_config_handler() - called for any change in USBID resistance
+ * This is used mostly for detecting OTG when RID value required from FG
+ */
+#define APSD_CFG                0xF5
+#define AUTO_SRC_DETECT_EN_BIT  BIT(0)
+#define APSD_TIMEOUT_MS         1500
+#define OTG_DETECT_DELAY         2000
+static int fg_usbid_config_handler(struct smbchg_chip *chip)
+{
+        int rc = 0;
+        u32 usbid_res_kohm;
+
+        rc = get_property_from_fg(chip, POWER_SUPPLY_PROP_USBID_RESISTANCE,
+                                                        &usbid_res_kohm);
+        if (rc) {
+                pr_smb(PR_STATUS, "Cannot read USBID from FG\n");
+                return rc;
+        }
+        chip->usbid_res_kohm = usbid_res_kohm;
+
+        pr_smb(PR_STATUS, "USBID resistance = %d kOhm\n", usbid_res_kohm);
+
+        mutex_lock(&chip->fg_usbid_lock);
+
+        if (PERCENT_BOUND(usbid_res_kohm, CUSTOM_CABLE_RESISTANCE_KOHM, 20)
+                || PERCENT_BOUND(usbid_res_kohm, CUSTOM_CABLE_RESISTANCE_KOHM_50, 20)) {
+                pr_smb(PR_STATUS, "Custom cable detected\n");
+
+                /* disable APSD in OTG/custom cable mode */
+                pr_smb(PR_MISC, "Disabling APSD\n");
+                rc = smbchg_sec_masked_write(chip,
+                                chip->usb_chgpth_base + APSD_CFG,
+                                AUTO_SRC_DETECT_EN_BIT, 0);
+
+                /* disable OTG */
+                rc = otg_enable(chip, false);
+                if (rc < 0)
+                        pr_err("Couldn't disable OTG mode rc=%d\n", rc);
+
+                /* delay for boost to fall */
+//              msleep(100);
+
+                /* keep usb controller in OTG mode */
+                if (chip->usb_psy) {
+                        pr_smb(PR_MISC, "setting usb psy OTG = 1\n");
+                        power_supply_set_usb_otg(chip->usb_psy, 1);
+                }
+                chip->custom_cable_detected = true;
+                smbchg_change_usb_supply_type(chip, POWER_SUPPLY_TYPE_USB_DCP);
+                power_supply_set_online(chip->usb_psy, 1);
+                power_supply_set_present(chip->usb_psy, 1);
+
+        } else if (!usbid_res_kohm) {
+                pr_smb(PR_STATUS, "Standard OTG cable detected\n");
+
+                /* disable APSD in OTG mode */
+                pr_smb(PR_MISC, "Disabling APSD\n");
+                rc = smbchg_sec_masked_write(chip,
+                                chip->usb_chgpth_base + APSD_CFG,
+                                AUTO_SRC_DETECT_EN_BIT, 0);
+
+                if (chip->custom_cable_detected) {
+                        /* reset USB status if custom cable was removed */
+                        smbchg_change_usb_supply_type(chip,
+                                        POWER_SUPPLY_TYPE_UNKNOWN);
+                        power_supply_set_online(chip->usb_psy, 0);
+                        power_supply_set_present(chip->usb_psy, 0);
+                }
+
+                chip->custom_cable_detected = false;
+                if (chip->usb_psy) {
+                        pr_smb(PR_MISC, "setting usb psy OTG = 1\n");
+                        power_supply_set_usb_otg(chip->usb_psy, 1);
+                }
+                /* delay for boost to fall */
+                //msleep(100);
+                rc = otg_enable(chip, true);
+                if (rc)
+                        pr_err("Failed to enable OTG rc=%d\n", rc);
+        } else {
+                /* unidentified usbid */
+                pr_smb(PR_STATUS, "Unidentified USBID detected\n");
+
+                if (chip->custom_cable_detected) {
+                        /* reset USB status if custom cable was removed */
+                        smbchg_change_usb_supply_type(chip,
+                                        POWER_SUPPLY_TYPE_UNKNOWN);
+                        power_supply_set_online(chip->usb_psy, 0);
+                        power_supply_set_present(chip->usb_psy, 0);
+                }
+
+                chip->custom_cable_detected = false;
+                if (chip->usb_psy) {
+                        pr_smb(PR_MISC, "setting usb psy OTG = 0\n");
+                        power_supply_set_usb_otg(chip->usb_psy, 0);
+                }
+                /* delay for boost to fall */
+                //msleep(100);
+                rc = otg_enable(chip, false);
+                if (rc)
+                        pr_err("Failed to disable OTG rc=%d\n", rc);
+
+                /* enable APSD */
+                pr_smb(PR_MISC, "Enable APSD\n");
+                rc = smbchg_sec_masked_write(chip,
+                                chip->usb_chgpth_base + APSD_CFG,
+                                AUTO_SRC_DETECT_EN_BIT, AUTO_SRC_DETECT_EN_BIT);
+        }
+
+        mutex_unlock(&chip->fg_usbid_lock);
+
+        schedule_delayed_work(&chip->otg_detect_work,
+                        msecs_to_jiffies(OTG_DETECT_DELAY));
+
+        if (chip->psy_registered)
+                power_supply_changed(&chip->batt_psy);
+
+        return 0;
+}
+
+static void otg_det_work(struct work_struct *work)
+{
+        struct smbchg_chip *chip = container_of(work,
+                                struct smbchg_chip,
+                                otg_detect_work.work);
+        int rc;
+        u32 usbid_res_kohm;
+        pr_err("lvchen!!!otg_det_work enter!");
+        rc = get_property_from_fg(chip, POWER_SUPPLY_PROP_USBID_RESISTANCE,
+                                                        &usbid_res_kohm);
+        if (rc) {
+                pr_smb(PR_STATUS, "Cannot read USBID from FG\n");
+                return;
+        }
+        pr_err("lvchen!!!otg_det_work usbid_res_kohm=%d,chip->usbid_res_kohm=%d\n",
+                                usbid_res_kohm,chip->usbid_res_kohm);
+        if (usbid_res_kohm == chip->usbid_res_kohm) {
+                pr_smb(PR_STATUS, "USBID has not changed! \n");
+                return; /*usbid has not changed */
+        } else {
+                pr_smb(PR_STATUS, "USBID changed from %d to %d kOhm\n",
+                                        chip->usbid_res_kohm, usbid_res_kohm);
+                fg_usbid_config_handler(chip);
+        }
+}
+
+
+
+#endif
+
+
 
 static int smbchg_otg_regulator_enable(struct regulator_dev *rdev)
 {
-	int rc = 0;
-	struct smbchg_chip *chip = rdev_get_drvdata(rdev);
 
+        int rc = 0;
+        struct smbchg_chip *chip = rdev_get_drvdata(rdev);
+
+#ifdef CONFIG_MACH_LENOVO_TBX304
+        pr_err("lvchen!!!smbchg_otg_regulator_enable enter!!!");
+        if (chip->use_fg_usbid &&
+                (PERCENT_BOUND(chip->usbid_res_kohm,CUSTOM_CABLE_RESISTANCE_KOHM, 5)
+                        ||  PERCENT_BOUND(chip->usbid_res_kohm, CUSTOM_CABLE_RESISTANCE_KOHM_50, 5))) {
+                pr_smb(PR_STATUS, "Custom cable - skip OTG enable\n");
+                return 0;
+        }
+
+        rc = otg_enable(chip, true);
+        if (rc)
+                pr_err("Failed to enable OTG rc=%d\n", rc);
+#else
 	chip->otg_retries = 0;
 	chip->chg_otg_enabled = true;
 	rc = configure_icl_control(chip, ICL_BUF_SS_DONE_VAL);
@@ -4269,13 +4627,27 @@ static int smbchg_otg_regulator_enable(struct regulator_dev *rdev)
 	else
 		chip->otg_enable_time = ktime_get();
 	pr_smb(PR_STATUS, "Enabling OTG Boost\n");
+#endif
 	return rc;
+
 }
 
 static int smbchg_otg_regulator_disable(struct regulator_dev *rdev)
 {
 	int rc = 0;
 	struct smbchg_chip *chip = rdev_get_drvdata(rdev);
+
+#ifdef CONFIG_MACH_LENOVO_TBX304
+        pr_err("lvchen!!!smbchg_otg_regulator_disable enter!!!");
+        if (PERCENT_BOUND(chip->usbid_res_kohm,CUSTOM_CABLE_RESISTANCE_KOHM, 5)
+                || PERCENT_BOUND(chip->usbid_res_kohm,CUSTOM_CABLE_RESISTANCE_KOHM_50, 5)) {
+                pr_smb(PR_STATUS, "Custom cable - skip OTG disable\n");
+                return 0;
+        }
+        rc = otg_enable(chip, false);
+        if (rc)
+                pr_err("Failed to disable OTG rc=%d\n", rc);
+#else
 
 	if (!chip->otg_pinctrl) {
 		rc = smbchg_masked_write(chip, chip->bat_if_base + CMD_CHG_REG,
@@ -4295,8 +4667,10 @@ static int smbchg_otg_regulator_disable(struct regulator_dev *rdev)
 		rc = 0;
 	}
 	pr_smb(PR_STATUS, "Disabling OTG Boost\n");
+#endif
 	return rc;
 }
+
 
 static int smbchg_otg_regulator_is_enable(struct regulator_dev *rdev)
 {
@@ -5019,6 +5393,12 @@ static int smbchg_change_usb_supply_type(struct smbchg_chip *chip,
 		current_limit_ma = 2000;
 	if (is_pd_5v_insertion == 2)
 		current_limit_ma = 500;
+#endif
+
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	 /* Custom cable handling */
+	if (chip->custom_cable_detected)
+		current_limit_ma = chip->custom_cable_max_ma;
 #endif
 	pr_smb(PR_STATUS, "Type %d: setting mA = %d\n",
 		type, current_limit_ma);
@@ -6622,9 +7002,10 @@ static void smbchg_external_power_changed(struct power_supply *psy)
 			schedule_delayed_work(&chip->hvdcp_det_work,
 				msecs_to_jiffies(HVDCP_NOTIFY_MS));
 	}
-
+#ifndef CONFIG_MACH_LENOVO_TBX304
 	if (usb_supply_type != POWER_SUPPLY_TYPE_USB)
 		goto  skip_current_for_non_sdp;
+#endif
 
 #ifdef CONFIG_MACH_LENOVO_TBX704
 	if (is_pd_5v_insertion == 1)
@@ -6640,9 +7021,26 @@ static void smbchg_external_power_changed(struct power_supply *psy)
 				current_limit);
 	if (rc < 0)
 		pr_err("Couldn't update USB PSY ICL vote rc=%d\n", rc);
-
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	if (chip->custom_cable_detected)
+	{
+		rc = smbchg_masked_write(chip, chip->usb_chgpth_base + CMD_IL, BIT(2), BIT(2));
+		if (rc < 0)
+			dev_err(chip->dev, "set T-hub current failed!rc=%d\n ", rc);
+		//rc = smbchg_set_high_usb_chg_current(chip,500); //current_limit);
+		//if (rc < 0) {
+		//pr_err("Couldn't set500mA rc = %d\n", rc);
+		//}
+	}else{
+		rc = smbchg_masked_write(chip, chip->usb_chgpth_base + CMD_IL, BIT(2), 0);
+		if (rc < 0)
+			dev_err(chip->dev, "set T-hub current failed!rc=%d\n ", rc);
+	}
+	//dump_regs(chip);
+#else
 skip_current_for_non_sdp:
 	smbchg_vfloat_adjust_check(chip);
+#endif
 
 #ifdef CONFIG_MACH_LENOVO_TBX704
 if (is_pd_5v_insertion != 0) 
@@ -6829,7 +7227,7 @@ static int smbchg_battery_get_property(struct power_supply *psy,
 {
 	struct smbchg_chip *chip = container_of(psy,
 				struct smbchg_chip, batt_psy);
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TBX304)
 	static int hottempshutdown_flag = 0;
 #endif
 
@@ -6953,14 +7351,14 @@ static int smbchg_battery_get_property(struct power_supply *psy,
 	default:
 		return -EINVAL;
 	}
-	#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TBX304)
 	if ((hottempshutdown_flag == 0)&&(get_prop_batt_temp(chip) > 591))
 	{
 		hottempshutdown_flag = 1;
 		pr_err("lvchen---temp > 591");
 		power_supply_changed(&chip->batt_psy);
 	}
-	#endif
+#endif
 	return 0;
 }
 
@@ -7098,7 +7496,7 @@ static irqreturn_t batt_warm_handler(int irq, void *_chip)
 {
 	struct smbchg_chip *chip = _chip;
 	u8 reg = 0;
-	#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TBX304)
 	int rc;
 	/* set the warm float voltage compensation,set the warm float voltage to 4.24V */
 	if (chip->float_voltage_comp != -EINVAL) {
@@ -7109,7 +7507,7 @@ static irqreturn_t batt_warm_handler(int irq, void *_chip)
 		pr_smb(PR_STATUS, "set float voltage comp to %d\n",
 			chip->float_voltage_comp);
 	}
-	#endif
+#endif
 	smbchg_read(chip, &reg, chip->bat_if_base + RT_STS, 1);
 	chip->batt_warm = !!(reg & HOT_BAT_SOFT_BIT);
 	pr_smb(PR_INTERRUPT, "triggered: 0x%02x\n", reg);
@@ -7125,7 +7523,7 @@ static irqreturn_t batt_cool_handler(int irq, void *_chip)
 {
 	struct smbchg_chip *chip = _chip;
 	u8 reg = 0;
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TBX304)
 	int rc;
 	/* set the cool float voltage compensation ,set the cool float voltage to 4.4V*/
 	rc = smbchg_float_voltage_comp_set(chip,0);
@@ -7143,7 +7541,7 @@ static irqreturn_t batt_cool_handler(int irq, void *_chip)
 	return IRQ_HANDLED;
 }
 
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 extern void export_do_msm_poweroff(void);
 #endif
 static irqreturn_t batt_pres_handler(int irq, void *_chip)
@@ -7153,14 +7551,14 @@ static irqreturn_t batt_pres_handler(int irq, void *_chip)
 
 	smbchg_read(chip, &reg, chip->bat_if_base + RT_STS, 1);
 	chip->batt_present = !(reg & BAT_MISSING_BIT);
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 	pr_err("lvchen------batt_pres = %d\n",chip->batt_present);
 #endif
 	pr_smb(PR_INTERRUPT, "triggered: 0x%02x\n", reg);
 	if (chip->psy_registered)
 		power_supply_changed(&chip->batt_psy);
 	smbchg_charging_status_change(chip);
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 	if (chip->batt_present == 0)
 		export_do_msm_poweroff();
 #endif
@@ -7454,7 +7852,11 @@ static irqreturn_t usbin_uv_handler(int irq, void *_chip)
 	else
 		complete_all(&chip->usbin_uv_lowered);
 
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	if (chip->hvdcp_3_det_ignore_uv || chip->custom_cable_detected)
+#else
 	if (chip->hvdcp_3_det_ignore_uv)
+#endif
 		goto out;
 
 	if ((reg & USBIN_UV_BIT) && (reg & USBIN_SRC_DET_BIT)) {
@@ -7502,6 +7904,9 @@ out:
 	return IRQ_HANDLED;
 }
 
+
+
+
 /**
  * src_detect_handler() - this is called on rising edge when USB charger type
  *			is detected and on falling edge when USB voltage falls
@@ -7518,6 +7923,9 @@ static irqreturn_t src_detect_handler(int irq, void *_chip)
 	int rc;
 #ifdef CONFIG_MACH_LENOVO_TBX704 
 	ktime_t  now_time = ktime_get_boottime();
+#endif
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	u32 usbid_res_kohm; 
 #endif
 	pr_smb(PR_STATUS,
 		"%s chip->usb_present = %d usb_present = %d src_detect = %d hvdcp_3_det_ignore_uv=%d\n",
@@ -7542,6 +7950,63 @@ static irqreturn_t src_detect_handler(int irq, void *_chip)
 	if (chip->hvdcp_3_det_ignore_uv) {
 		goto out;
 	}
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	if(!(chip->custom_cable_detected))
+	{
+		rc = get_property_from_fg(chip, POWER_SUPPLY_PROP_USBID_RESISTANCE,
+		&usbid_res_kohm);
+		if (rc) {
+			pr_smb(PR_STATUS, "Cannot read USBID from FG\n");
+			return rc;
+		}
+		pr_smb(PR_STATUS, "USBID resistance = %d kOhm\n", usbid_res_kohm);
+
+		mutex_lock(&chip->fg_usbid_lock);
+
+		if (PERCENT_BOUND(usbid_res_kohm, CUSTOM_CABLE_RESISTANCE_KOHM, 20)
+			|| PERCENT_BOUND(usbid_res_kohm, CUSTOM_CABLE_RESISTANCE_KOHM_50, 20)) {
+			pr_smb(PR_STATUS, "Custom cable detected\n");
+
+			/* disable APSD in OTG/custom cable mode */
+			pr_smb(PR_MISC, "Disabling APSD\n");
+			rc = smbchg_sec_masked_write(chip,
+			chip->usb_chgpth_base + APSD_CFG,
+			AUTO_SRC_DETECT_EN_BIT, 0);
+
+			/* disable OTG */
+			rc = otg_enable(chip, false);
+			if (rc < 0)
+				pr_err("Couldn't disable OTG mode rc=%d\n", rc);
+
+			/* keep usb controller in OTG mode */
+			if (chip->usb_psy) {
+				pr_smb(PR_MISC, "setting usb psy OTG = 1\n");
+				power_supply_set_usb_otg(chip->usb_psy, 1);
+			}
+			chip->custom_cable_detected = true;
+			chip->usbid_res_kohm = usbid_res_kohm;
+		}
+
+		mutex_unlock(&chip->fg_usbid_lock);
+	}
+	if (chip->custom_cable_detected && src_detect)
+	{
+		smbchg_change_usb_supply_type(chip, POWER_SUPPLY_TYPE_USB_DCP);
+		power_supply_set_online(chip->usb_psy, 1);
+		power_supply_set_present(chip->usb_psy, 1);
+		goto out;
+	}
+	else
+	{
+		if(src_detect)
+		{
+			pr_smb(PR_STATUS, "reschedule detect work to check ID resistance\n"); 
+			schedule_delayed_work(&chip->otg_detect_work,
+			msecs_to_jiffies(OTG_DETECT_DELAY));
+
+		}
+	}
+#endif
 	/*
 	 * When VBAT is above the AICL threshold (4.25V) - 180mV (4.07V),
 	 * an input collapse due to AICL will actually cause an USBIN_UV
@@ -7577,6 +8042,8 @@ static irqreturn_t src_detect_handler(int irq, void *_chip)
 out:
 	return IRQ_HANDLED;
 }
+
+
 
 /**
  * otg_oc_handler() - called when the usb otg goes over current
@@ -7667,8 +8134,31 @@ static irqreturn_t usbid_change_handler(int irq, void *_chip)
 #ifdef CONFIG_MACH_LENOVO_TBX704
 	union power_supply_propval typec_orientation;
 #endif
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	int rc;
+#endif
 	pr_smb(PR_INTERRUPT, "triggered\n");
 
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	if (chip->use_fg_usbid) {
+		cancel_delayed_work_sync(&chip->otg_detect_work);
+		rc = fg_usbid_config_handler(chip);
+		if (rc) {
+			pr_smb(PR_STATUS, "Canot configure custom cable\n");
+			return 0;
+		}
+	} else {
+		otg_present = is_otg_present(chip);
+		if (chip->usb_psy) {
+			pr_smb(PR_MISC, "setting usb psy OTG = %d\n",
+					otg_present ? 1 : 0);
+			power_supply_set_usb_otg(chip->usb_psy,
+					otg_present ? 1 : 0);
+		}
+		if (otg_present)
+			pr_smb(PR_STATUS, "OTG detected\n");
+	}
+#else
 	otg_present = is_otg_present(chip);
 	if (chip->usb_psy) {
 		pr_smb(PR_MISC, "setting usb psy OTG = %d\n",
@@ -7697,7 +8187,7 @@ static irqreturn_t usbid_change_handler(int irq, void *_chip)
 	}
 	if (otg_present)
 		pr_smb(PR_STATUS, "OTG detected\n");
-
+#endif
 	/* update FG */
 	set_property_on_fg(chip, POWER_SUPPLY_PROP_STATUS,
 			get_prop_batt_status(chip));
@@ -7843,7 +8333,9 @@ static inline int get_bpd(const char *name)
 #define VCHG_INPUT_CURRENT_BIT		BIT(3)
 #define CFG_AFVC			0xF6
 #define VFLOAT_COMP_ENABLE_MASK		SMB_MASK(2, 0)
+#ifndef CONFIG_MACH_LENOVO_TBX304
 #define TR_RID_REG			0xFA
+#endif
 #define FG_INPUT_FET_DELAY_BIT		BIT(3)
 #define TRIM_OPTIONS_7_0		0xF6
 #define INPUT_MISSING_POLLER_EN_BIT	BIT(3)
@@ -7921,7 +8413,7 @@ static int smbchg_hw_init(struct smbchg_chip *chip)
 	pr_smb(PR_STATUS, "Charger Revision DIG: %d.%d; ANA: %d.%d\n",
 			chip->revision[DIG_MAJOR], chip->revision[DIG_MINOR],
 			chip->revision[ANA_MAJOR], chip->revision[ANA_MINOR]);
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 	//Disbale ESR
 	smbchg_sec_masked_write(chip,chip->misc_base + 0xF6,BIT(7),BIT(7));
 #endif
@@ -7992,6 +8484,18 @@ static int smbchg_hw_init(struct smbchg_chip *chip)
 		dev_err(chip->dev, "Couldn't set input limit cmd rc=%d\n", rc);
 		return rc;
 	}
+
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	if (chip->use_fg_usbid) {
+		rc = smbchg_sec_masked_write(chip,
+			chip->usb_chgpth_base + TR_RID_REG, RID_ALG_BIT, 0);
+		if (rc < 0) {
+			dev_err(chip->dev,
+				"Couldn't disable TR_RID_REG rc=%d\n", rc);
+			return rc;
+		}
+	}
+#endif
 
 	/*
 	 * set chg en by cmd register, set chg en by writing bit 1,
@@ -8570,6 +9074,15 @@ static int smb_parse_dt(struct smbchg_chip *chip)
 	OF_PROP_READ(chip, chip->vchg_adc_channel,
 			"vchg-adc-channel-id", rc, 1);
 
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	if (of_property_read_bool(node, "qcom,use-fg-usbid")) {
+		chip->use_fg_usbid = true;
+		OF_PROP_READ(chip, chip->custom_cable_max_ma,
+				"custom-cable-max-ma", rc, 1);
+		if (chip->custom_cable_max_ma == -EINVAL)
+			chip->custom_cable_max_ma = CURRENT_500_MA;
+	}
+#endif
 	/* read boolean configuration properties */
 	chip->use_vfloat_adjustments = of_property_read_bool(node,
 						"qcom,autoadjust-vfloat");
@@ -8810,6 +9323,17 @@ static int smbchg_request_irqs(struct smbchg_chip *chip)
 				aicl_done_handler,
 				(IRQF_TRIGGER_RISING | IRQF_ONESHOT),
 				rc);
+#ifdef CONFIG_MACH_LENOVO_TBX304
+			if (chip->schg_version != QPNP_SCHG_LITE ||
+					chip->use_fg_usbid) {
+				REQUEST_IRQ(chip, spmi_resource,
+					chip->usbid_change_irq,
+					"usbid-change", usbid_change_handler,
+					(IRQF_TRIGGER_FALLING | IRQF_ONESHOT),
+					rc);
+					enable_irq_wake(chip->usbid_change_irq);
+			}
+#endif
 			if (chip->schg_version != QPNP_SCHG_LITE) {
 				REQUEST_IRQ(chip, spmi_resource,
 					chip->otg_fail_irq, "otg-fail",
@@ -8819,13 +9343,17 @@ static int smbchg_request_irqs(struct smbchg_chip *chip)
 					otg_oc_handler,
 					(IRQF_TRIGGER_RISING | IRQF_ONESHOT),
 					rc);
+#ifndef CONFIG_MACH_LENOVO_TBX304
 				REQUEST_IRQ(chip, spmi_resource,
 					chip->usbid_change_irq, "usbid-change",
 					usbid_change_handler,
 					(IRQF_TRIGGER_FALLING | IRQF_ONESHOT),
 					rc);
+#endif
 				enable_irq_wake(chip->otg_oc_irq);
+#ifndef CONFIG_MACH_LENOVO_TBX304
 				enable_irq_wake(chip->usbid_change_irq);
+#endif
 				enable_irq_wake(chip->otg_fail_irq);
 			}
 			enable_irq_wake(chip->usbin_uv_irq);
@@ -8858,11 +9386,23 @@ static int smbchg_request_irqs(struct smbchg_chip *chip)
 		case SMBCHG_OTG_SUBTYPE:
 			break;
 		case SMBCHG_LITE_OTG_SUBTYPE:
+#ifdef CONFIG_MACH_LENOVO_TBX304
+			if (!chip->use_fg_usbid) {
+				REQUEST_IRQ(chip, spmi_resource,
+					chip->usbid_change_irq,
+					"usbid-change",
+					usbid_change_handler,
+					(IRQF_TRIGGER_FALLING | IRQF_ONESHOT),
+					rc);
+				enable_irq_wake(chip->usbid_change_irq);
+			}
+#else
 			REQUEST_IRQ(chip, spmi_resource,
 				chip->usbid_change_irq, "usbid-change",
 				usbid_change_handler,
 				(IRQF_TRIGGER_FALLING | IRQF_ONESHOT),
 				rc);
+#endif
 			REQUEST_IRQ(chip, spmi_resource,
 				chip->otg_oc_irq, "otg-oc",
 				otg_oc_handler,
@@ -8870,7 +9410,9 @@ static int smbchg_request_irqs(struct smbchg_chip *chip)
 			REQUEST_IRQ(chip, spmi_resource,
 				chip->otg_fail_irq, "otg-fail",
 				otg_fail_handler, flags, rc);
+#ifndef CONFIG_MACH_LENOVO_TBX304
 			enable_irq_wake(chip->usbid_change_irq);
+#endif
 			enable_irq_wake(chip->otg_oc_irq);
 			enable_irq_wake(chip->otg_fail_irq);
 			break;
@@ -9095,7 +9637,7 @@ static int smbchg_check_chg_version(struct smbchg_chip *chip)
 	return 0;
 }
 
-#ifndef CONFIG_MACH_LENOVO_TBX704
+#if !defined(CONFIG_MACH_LENOVO_TBX704) && !defined(CONFIG_MACH_LENOVO_TBX304)
 static void rerun_hvdcp_det_if_necessary(struct smbchg_chip *chip)
 {
 	enum power_supply_type usb_supply_type;
@@ -9313,8 +9855,10 @@ static int smbchg_probe(struct spmi_device *spmi)
 		dev_err(&spmi->dev, "Unable to allocate memory\n");
 		return -ENOMEM;
 	}
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TBX304)
 	chip->last_soc = -1;
+#endif
+#if defined (CONFIG_MACH_LENOVO_TBX704)
 	chip->last_hvdcp9v.tv64=0;
 #endif
 	chip->fcc_votable = create_votable("BATT_FCC",
@@ -9401,6 +9945,9 @@ static int smbchg_probe(struct spmi_device *spmi)
 	}
 
 	INIT_WORK(&chip->usb_set_online_work, smbchg_usb_update_online_work);
+#ifdef CONFIG_MACH_LENOVO_TBX304
+        INIT_DELAYED_WORK(&chip->otg_detect_work, otg_det_work);
+#endif
 	INIT_DELAYED_WORK(&chip->parallel_en_work,
 			smbchg_parallel_usb_en_work);
 	INIT_DELAYED_WORK(&chip->vfloat_adjust_work, smbchg_vfloat_adjust_work);
@@ -9433,6 +9980,10 @@ static int smbchg_probe(struct spmi_device *spmi)
 	mutex_init(&chip->taper_irq_lock);
 	mutex_init(&chip->pm_lock);
 	mutex_init(&chip->wipower_config);
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	mutex_init(&chip->otg_en_lock);
+	mutex_init(&chip->fg_usbid_lock);
+#endif
 	mutex_init(&chip->usb_status_lock);
 	device_init_wakeup(chip->dev, true);
 
@@ -9447,7 +9998,9 @@ static int smbchg_probe(struct spmi_device *spmi)
 		pr_err("Unable to check schg version rc=%d\n", rc);
 		goto votables_cleanup;
 	}
-
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	chip->hvdcp_not_supported = true;
+#endif
 	rc = smb_parse_dt(chip);
 	if (rc < 0) {
 		dev_err(&spmi->dev, "Unable to parse DT nodes: %d\n", rc);
@@ -9563,7 +10116,7 @@ static int smbchg_probe(struct spmi_device *spmi)
 		power_supply_set_present(chip->usb_psy, chip->usb_present);
 	}
 
-#ifndef CONFIG_MACH_LENOVO_TBX704
+#if !defined (CONFIG_MACH_LENOVO_TBX704) && !defined (CONFIG_MACH_LENOVO_TBX304)
 	rerun_hvdcp_det_if_necessary(chip);
 
 	update_usb_status(chip, is_usb_present(chip), false);

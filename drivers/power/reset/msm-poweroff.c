@@ -436,7 +436,7 @@ static void do_msm_poweroff(void)
 	return;
 }
 
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined (CONFIG_MACH_LENOVO_TBX704) || defined (CONFIG_MACH_LENOVO_TBX304)
 void export_do_msm_poweroff(void)
 {
 	do_msm_poweroff();

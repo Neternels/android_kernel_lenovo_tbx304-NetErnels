@@ -15,4 +15,5 @@ int cm_get_InternalTemperature(void);
 int cm_get_StateOfCharge(void);
 int cm_get_StateOfHealth(void);
 extern int g_power_is_couloMeter;/* Modify by lichuangchuang for battery debug (8909) SW00131408 20150531  */
+extern int g_battery_id;/*add by lvchen*/
 #endif

@@ -169,7 +169,11 @@ enum usb_chg_type {
 	USB_DCP_CHARGER,
 	USB_CDP_CHARGER,
 	USB_PROPRIETARY_CHARGER,
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	USB_UNSUPPORTED_CHARGER,
+#else
 	USB_FLOATED_CHARGER,
+#endif
 #if defined(CONFIG_MACH_LENOVO_TB8504)
 	USB_T_HUB_CHARGER,
 #endif
@@ -218,6 +222,14 @@ enum usb_ctrl {
 	HSIC_CTRL,	/* HSIC controller */
 	NUM_CTRL,
 };
+
+#ifdef CONFIG_MACH_LENOVO_TBX304
+enum floated_chg_type {
+	FLOATING_AS_SDP = 0,
+	FLOATING_AS_DCP,
+	FLOATING_AS_INVALID,
+};
+#endif
 
 /**
  * USB ID state
@@ -315,6 +327,9 @@ struct msm_otg_platform_data {
 	bool delay_lpm_on_disconnect;
 	bool dp_manual_pullup;
 	bool enable_sec_phy;
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	enum floated_chg_type enable_floated_charger;
+#endif
 	struct msm_bus_scale_pdata *bus_scale_table;
 	const char *mhl_dev_name;
 	int log2_itc;
@@ -478,6 +493,9 @@ struct msm_otg {
 	uint32_t bus_perf_client;
 	bool mhl_enabled;
 	bool host_bus_suspend;
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	bool is_ext_chg_detected;
+#endif
 	bool device_bus_suspend;
 	bool bus_clks_enabled;
 	struct timer_list chg_check_timer;

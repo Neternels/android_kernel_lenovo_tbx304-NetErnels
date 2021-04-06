@@ -16,11 +16,11 @@
 #include <asm/atomic.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
-#include "couloMeter.h"
+#include"couloMeter.h"
 //#include "cust_pmic.h"
 
 //add by zym for debug log  
-#define COULOMETER_DEBUG_LOG  //stone open for debug
+//#define COULOMETER_DEBUG_LOG  //stone open for debug
 #ifdef COULOMETER_DEBUG_LOG
 #define LOG_INF pr_err     //stone modify for debug
 #else
@@ -37,9 +37,8 @@
 #define REG_BLOCKDATAOFFSET                 0x3e
 #define REG_BLOCKDATA                       0x40
 
-
 int g_power_is_couloMeter = 1;/* Modify by lichuangchuang for battery debug (8909) SW00131408 20150531 start */
-
+int g_battery_id = 100000;
 static struct i2c_board_info __initdata i2c_dev={ I2C_BOARD_INFO("couloMeter", 0x55)};
 static const struct i2c_device_id cm_i2c_id[] = {{"couloMeter", 0},{}};
 static struct i2c_client *cm_iic_client = NULL;
@@ -192,13 +191,17 @@ static int cm_read_byte(u8 reg, int *val)
 
 static int __cm_read_word(u8 reg)
 {
-	s32 ret;
-
-	ret = i2c_smbus_read_word_data(cm_iic_client, reg);
-	if (ret < 0) {
-		LOG_INF(	"i2c read fail: can't read from %02x: %d\n", reg, ret);
+	s32 ret = -1;
+	int count = 0;
+	while ((ret < 0) && (count < 3))
+	{
+		ret = i2c_smbus_read_word_data(cm_iic_client, reg);
+		if (ret < 0) {
+			pr_err(	"i2c read fail: can't read from %02x: %d\n", reg, ret);
+			count++;
+			mdelay(10);
+		}
 	}
-
 	msleep(4);
 	return ret;
 }
@@ -215,14 +218,19 @@ static int cm_read_word(u8 reg)
 
 static int __cm_write_word(u8 reg, int val)
 {
-	s32 ret;
+	s32 ret = -1;
+	int count = 0;
 
-	ret = i2c_smbus_write_word_data(cm_iic_client, reg, val);
-	if (ret < 0) {
-		LOG_INF(	"i2c write fail: can't write %02x to %02x: %d\n",
-			val, reg, ret);
+	while ((ret < 0) && (count < 3))
+	{
+		ret = i2c_smbus_write_word_data(cm_iic_client, reg, val);
+		if (ret < 0) {
+			pr_err(	"i2c write fail: can't write %02x to %02x: %d\n",
+				val, reg, ret);
+			count++;
+			mdelay(10);
+		}
 	}
-
 	msleep(4);
 	return ret;
 }
@@ -306,7 +314,8 @@ int cm_get_ID1()
 {
 	int ret = -1;
 	uint id1 = 0;
-
+	if( 0 == g_power_is_couloMeter )
+		return ret;
 	// ID information 1
 	ret = cm_write_word(REG_BLOCKDATAOFFSET, 0x41f8);
 	if (ret < 0) return ret;
@@ -728,12 +737,11 @@ int cm_get_StateOfCharge(void)
 	{
 		ret = 50;
 		g_power_is_couloMeter = 0;
-		LOG_INF("[%s,%d]g_power_is_couloMeter=%d ret=%d\n",__FUNCTION__,__LINE__,g_power_is_couloMeter,ret);
+		pr_err("[%s,%d]g_power_is_couloMeter=%d ret=%d\n",__FUNCTION__,__LINE__,g_power_is_couloMeter,ret);
 	}
 	else{
 		ret = (ret_b << 8) | ret_a;
-		g_power_is_couloMeter = 1;
-		LOG_INF("[%s,%d] else g_power_is_couloMeter=%d ret=%d\n",__FUNCTION__,__LINE__,g_power_is_couloMeter,ret);
+		//pr_err("[%s,%d] else g_power_is_couloMeter=%d ret=%d\n",__FUNCTION__,__LINE__,g_power_is_couloMeter,ret);
 		}
 
 /*stone  add  end*/
@@ -840,7 +848,12 @@ static int cm_i2c_probe(struct i2c_client *client, const struct i2c_device_id *i
 	/* Modify by lichuangchuang for battery debug (8909) SW00131408 20150531 end */
 	LOG_INF("++stone [CM_i2c_probe]Attached!! \n");
 	cm_get_ParameterVersion();
-	cm_get_ID1();
+	err = cm_get_ID1();
+	if (err == 0x21)
+		g_battery_id = 100000;
+	else
+		g_battery_id = 1000000;
+	pr_err("cm_get_ID1 = 0x%x\n",err);
 	cm_get_ID2();
 
 	return 0;

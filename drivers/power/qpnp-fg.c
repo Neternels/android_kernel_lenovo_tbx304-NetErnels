@@ -35,7 +35,7 @@
 #include <linux/string_helpers.h>
 #include <linux/alarmtimer.h>
 #include <linux/qpnp/qpnp-revid.h>
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TBX304)
 #include "couloMeter.h"  //stone add
 
 ///* stone add for debug start *///
@@ -347,7 +347,7 @@ module_param_named(
 	battery_type, fg_batt_type, charp, S_IRUSR | S_IWUSR
 );
 
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TBX304)
 static int fg_sram_update_period_ms = 3000;
 #else
 static int fg_sram_update_period_ms = 30000;
@@ -547,6 +547,9 @@ struct fg_chip {
 	bool			battery_missing;
 	bool			power_supply_registered;
 	bool			sw_rbias_ctrl;
+#if defined(CONFIG_MACH_LENOVO_TBX304)
+	bool			use_fg_usbid;
+#endif
 	bool			use_thermal_coefficients;
 	bool			esr_strict_filter;
 	bool			soc_empty;
@@ -2052,7 +2055,7 @@ static void fg_handle_battery_insertion(struct fg_chip *chip)
 	schedule_delayed_work(&chip->update_sram_data, msecs_to_jiffies(0));
 }
 
-#if !defined(CONFIG_MACH_LENOVO_TB8703) && !defined(CONFIG_MACH_LENOVO_TBX704) && !defined(CONFIG_MACH_LENOVO_TB8704) && !defined(CONFIG_MACH_LENOVO_TB8804) && !defined(CONFIG_MACH_LENOVO_TB8504)
+#if !defined(CONFIG_MACH_LENOVO_TB8703) && !defined(CONFIG_MACH_LENOVO_TBX704) && !defined(CONFIG_MACH_LENOVO_TB8704) && !defined(CONFIG_MACH_LENOVO_TB8804) && !defined(CONFIG_MACH_LENOVO_TB8504) && !defined(CONFIG_MACH_LENOVO_TBX304)
 static int soc_to_setpoint(int soc)
 {
 	return DIV_ROUND_CLOSEST(soc * 255, 100);
@@ -2413,6 +2416,33 @@ static int get_sram_prop_now(struct fg_chip *chip, unsigned int type)
 
 	return fg_data[type].value;
 }
+
+#if defined(CONFIG_MACH_LENOVO_TBX304)
+#define FG_USBID_CODE_BUS_ADDR		0x598
+#define PULLUP_RESISTER_KOHM		121
+#define USBIDCONV15B(code) \
+	((code) * (PULLUP_RESISTER_KOHM) / ((1 << 12) - (code)))
+static int get_sram_usbid_resistance(struct fg_chip *chip)
+{
+	u8 val[2];
+	int ret = 0, rc;
+
+	if (!chip->use_fg_usbid)
+		return 0;
+
+	rc = fg_mem_read(chip, val, FG_USBID_CODE_BUS_ADDR, 2, 0, 1);
+	if (rc) {
+		pr_err("Failed to read sram data\n");
+		return 0;
+	}
+
+	ret = (((val[1] & 0x7) << 8) | val[0]);
+	ret = USBIDCONV15B(ret);
+	pr_err("lvchen!!!ret = %d\n",ret);
+
+	return ret;
+}
+#endif
 
 #define MIN_TEMP_DEGC	-300
 #define MAX_TEMP_DEGC	970
@@ -4741,6 +4771,8 @@ static int fg_power_get_property(struct power_supply *psy,
 		     val->intval = 100000;
 		else
 		val->intval =1000000;
+#elseif defined(CONFIG_MACH_LENOVO_TBX304)
+		val->intval = g_battery_id;//cm_get_ID1(); 
 #else
     val->intval = get_sram_prop_now(chip, FG_DATA_BATT_ID);
 #endif
@@ -4794,6 +4826,11 @@ static int fg_power_get_property(struct power_supply *psy,
 #ifdef CONFIG_MACH_LENOVO_TBX704
 	case POWER_SUPPLY_PROP_CALIBRATE:
 		val->intval = chip->fg_soc_changed;
+		break;
+#endif
+#ifdef CONFIG_MACH_LENOVO_TBX304
+	case POWER_SUPPLY_PROP_USBID_RESISTANCE:
+		val->intval = get_sram_usbid_resistance(chip);
 		break;
 #endif
 	default:
@@ -5687,7 +5724,7 @@ done:
 #define RSLOW_COMP_C1_OFFSET		0
 #define RSLOW_COMP_C2_OFFSET		2
 #define BATT_PROFILE_OFFSET		0x4C0
-#ifndef CONFIG_MACH_LENOVO_TBX704
+#if !defined(CONFIG_MACH_LENOVO_TBX704) && !defined(CONFIG_MACH_LENOVO_TBX304)
 static void get_default_rslow_comp_settings(struct fg_chip *chip)
 {
 	int offset;
@@ -5759,7 +5796,7 @@ static int populate_system_data(struct fg_chip *chip)
 				chip->ocv_junction_p1p2,
 				chip->ocv_junction_p2p3);
 
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TBX304)
 	rc = fg_mem_read(chip, buffer, RSLOW_CFG_REG, 1, RSLOW_CFG_OFFSET, 0);
 	if (rc) {
 		pr_err("unable to read rslow cfg: %d\n", rc);
@@ -6220,7 +6257,7 @@ static void discharge_gain_work(struct work_struct *work)
 }
 
 #define LOW_LATENCY			BIT(6)
-#ifdef CONFIG_MACH_LENOVO_TBX704
+#if defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TBX304)
 #define BATT_PROFILE_OFFSET		0x4C0
 #endif
 #define PROFILE_INTEGRITY_REG		0x53C
@@ -7443,7 +7480,10 @@ static int fg_of_init(struct fg_chip *chip)
 		pr_info("restore: %d validate_by_ocv: %d range_pct: %d\n",
 			chip->batt_info_restore, fg_batt_valid_ocv,
 			fg_batt_range_pct);
-
+#if defined(CONFIG_MACH_LENOVO_TBX304)
+	chip->use_fg_usbid = of_property_read_bool(node,
+					"qcom,use-fg-usbid");
+#endif
 	return rc;
 }
 
@@ -7517,8 +7557,10 @@ static int fg_init_irqs(struct fg_chip *chip)
 					chip->soc_irq[FULL_SOC].irq, rc);
 				return rc;
 			}
+#if !defined(CONFIG_MACH_LENOVO_TBX304)
 			enable_irq_wake(chip->soc_irq[FULL_SOC].irq);
 			chip->full_soc_irq_enabled = true;
+#endif
 
 			if (!chip->use_vbat_low_empty_soc) {
 				rc = devm_request_irq(chip->dev,
@@ -8225,6 +8267,10 @@ static int bcl_trim_workaround(struct fg_chip *chip)
 #define KI_COEFF_PRED_FULL_4_0_MSB	0x88
 #define KI_COEFF_PRED_FULL_4_0_LSB	0x00
 #define FG_BCL_CONFIG_OFFSET		0x3
+#if defined(CONFIG_MACH_LENOVO_TBX304)
+#define FG_ADC_CONFIG_REG_OFFSET	0x2
+#define FG_USBID_MASK			0xff
+#endif
 #define ALERT_CFG_OFFSET		3
 #define I_TERM_QUAL_BIT			BIT(1)
 #define PATCH_NEG_CURRENT_BIT		BIT(3)
@@ -8272,7 +8318,7 @@ static int fg_common_hw_init(struct fg_chip *chip)
 		}
 	}
 
-#if defined(CONFIG_MACH_LENOVO_TB8703) || defined(CONFIG_MACH_LENOVO_TBX704)
+#if defined(CONFIG_MACH_LENOVO_TB8703) || defined(CONFIG_MACH_LENOVO_TBX704) || defined(CONFIG_MACH_LENOVO_TBX304)
 	rc = fg_mem_masked_write(chip, settings[FG_MEM_DELTA_SOC].address, 0xFF,
 			settings[FG_MEM_DELTA_SOC].value,
 			settings[FG_MEM_DELTA_SOC].offset);
@@ -9109,6 +9155,18 @@ static int fg_probe(struct spmi_device *spmi)
 		pr_err("failed to parse devicetree rc%d\n", rc);
 		goto of_init_fail;
 	}
+#if defined(CONFIG_MACH_LENOVO_TBX304)
+	if (chip->use_fg_usbid) {
+		/* enable USBID detection */
+		rc = fg_mem_masked_write(chip, FG_ADC_CONFIG_REG,
+					FG_USBID_MASK, 2,
+					FG_ADC_CONFIG_REG_OFFSET);
+		if (rc) {
+			pr_err("failed to write to 0x4B8 rc=%d\n", rc);
+			return rc;
+		}
+	}
+#endif
 
 	if (chip->jeita_hysteresis_support) {
 		rc = fg_init_batt_temp_state(chip);

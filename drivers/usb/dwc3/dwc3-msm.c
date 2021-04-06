@@ -54,6 +54,8 @@
 
 #if defined(CONFIG_MACH_LENOVO_TB8804) //add by longcheer_liml_2017_04_05_for_open log
 #define DWC3_IDEV_CHG_MAX 2000 //1500
+#elseif CONFIG_MACH_LENOVO_TBX304
+#define DWC3_IDEV_CHG_MAX 1800//1500
 #else
 #define DWC3_IDEV_CHG_MAX 1500
 #endif
