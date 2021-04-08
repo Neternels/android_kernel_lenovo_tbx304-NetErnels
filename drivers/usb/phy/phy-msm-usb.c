@@ -1810,7 +1810,7 @@ static int msm_otg_notify_chg_type(struct msm_otg *motg)
 			motg->chg_type == USB_FLOATED_CHARGER ||
 			(motg->chg_type == USB_T_HUB_CHARGER))
 #endif
-#if !defined (CONFIG_MACH_LENOVO_TBX304)
+#if !defined (CONFIG_MACH_LENOVO_TBX304) && !defined(CONFIG_MACH_LENOVO_TB8504)
 			motg->chg_type == USB_FLOATED_CHARGER)
 #endif
 		charger_type = POWER_SUPPLY_TYPE_USB_DCP;
